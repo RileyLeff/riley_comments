@@ -5,27 +5,33 @@ use crate::models::*;
 use crate::{Error, Result};
 
 /// Add a reaction to a comment. Idempotent — re-adding the same emoji is a no-op.
-pub async fn add(pool: &PgPool, comment_id: Uuid, user_id: Uuid, emoji: &str) -> Result<()> {
+pub async fn add(
+    pool: &PgPool,
+    comment_id: Uuid,
+    user_id: Uuid,
+    username: &str,
+    emoji: &str,
+) -> Result<()> {
     // Verify the comment exists and isn't deleted
-    let exists: Option<(Uuid,)> = sqlx::query_as(
-        "SELECT id FROM comments WHERE id = $1 AND deleted_at IS NULL",
-    )
-    .bind(comment_id)
-    .fetch_optional(pool)
-    .await?;
+    let exists: Option<(Uuid,)> =
+        sqlx::query_as("SELECT id FROM comments WHERE id = $1 AND deleted_at IS NULL")
+            .bind(comment_id)
+            .fetch_optional(pool)
+            .await?;
 
     if exists.is_none() {
         return Err(Error::NotFound(format!("comment {comment_id} not found")));
     }
 
     sqlx::query(
-        r#"INSERT INTO comment_reactions (comment_id, user_id, emoji)
-           VALUES ($1, $2, $3)
+        r#"INSERT INTO comment_reactions (comment_id, user_id, emoji, username)
+           VALUES ($1, $2, $3, $4)
            ON CONFLICT (comment_id, user_id, emoji) DO NOTHING"#,
     )
     .bind(comment_id)
     .bind(user_id)
     .bind(emoji)
+    .bind(username)
     .execute(pool)
     .await?;
 
@@ -90,6 +96,25 @@ pub async fn counts_for_comments(
     }
 
     Ok(map)
+}
+
+/// Get the usernames of everyone who reacted with a specific emoji on a comment.
+pub async fn reactors(
+    pool: &PgPool,
+    comment_id: Uuid,
+    emoji: &str,
+) -> Result<Vec<ReactionDetail>> {
+    let rows = sqlx::query_as::<_, ReactionDetail>(
+        r#"SELECT username FROM comment_reactions
+           WHERE comment_id = $1 AND emoji = $2 AND username != ''
+           ORDER BY created_at ASC"#,
+    )
+    .bind(comment_id)
+    .bind(emoji)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows)
 }
 
 /// Get the top N most-used reaction emoji across all comments.

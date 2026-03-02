@@ -104,7 +104,7 @@ fn default_max_connections() -> u32 {
     5
 }
 fn default_max_depth() -> i32 {
-    3
+    1
 }
 fn default_max_body_length() -> usize {
     10_000

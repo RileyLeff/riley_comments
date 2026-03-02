@@ -136,6 +136,8 @@ pub async fn get(pool: &PgPool, id: Uuid) -> Result<Comment> {
 }
 
 /// Create a new comment, enforcing max depth.
+/// When replying to a reply (depth >= max_depth), the comment is flattened to the
+/// parent level and `reply_to_user_id`/`reply_to_username` record the intended target.
 pub async fn create(
     pool: &PgPool,
     user_id: Uuid,
@@ -143,28 +145,40 @@ pub async fn create(
     input: &CreateComment,
     max_depth: i32,
 ) -> Result<Comment> {
-    let (parent_id, depth) = if let Some(pid) = input.parent_id {
+    let (parent_id, depth, reply_to_user_id, reply_to_username) = if let Some(pid) =
+        input.parent_id
+    {
         let parent = get(pool, pid).await?;
         if parent.deleted_at.is_some() {
-            return Err(Error::Validation("cannot reply to a deleted comment".to_string()));
+            return Err(Error::Validation(
+                "cannot reply to a deleted comment".to_string(),
+            ));
         }
         if parent.entity_type != input.entity_type || parent.entity_id != input.entity_id {
-            return Err(Error::Validation("parent belongs to a different entity".to_string()));
+            return Err(Error::Validation(
+                "parent belongs to a different entity".to_string(),
+            ));
         }
-        // Enforce max depth: if parent is at max, attach to parent's parent instead
+        // Enforce max depth: if parent is at max, flatten to parent's parent
+        // and record who we're actually replying to
         if parent.depth >= max_depth {
-            (parent.parent_id, parent.depth)
+            (
+                parent.parent_id,
+                parent.depth,
+                Some(parent.user_id),
+                Some(parent.username.clone()),
+            )
         } else {
-            (Some(pid), parent.depth + 1)
+            (Some(pid), parent.depth + 1, None, None)
         }
     } else {
-        (None, 0)
+        (None, 0, None, None)
     };
 
     let id = Uuid::now_v7();
     let comment = sqlx::query_as::<_, Comment>(
-        r#"INSERT INTO comments (id, parent_id, user_id, username, entity_type, entity_id, body, depth)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        r#"INSERT INTO comments (id, parent_id, user_id, username, entity_type, entity_id, body, depth, reply_to_user_id, reply_to_username)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
            RETURNING *"#,
     )
     .bind(id)
@@ -175,6 +189,8 @@ pub async fn create(
     .bind(&input.entity_id)
     .bind(&input.body)
     .bind(depth)
+    .bind(reply_to_user_id)
+    .bind(reply_to_username)
     .fetch_one(pool)
     .await?;
 
@@ -276,6 +292,12 @@ fn build_comment_response(
             c.body
         },
         depth: c.depth,
+        reply_to_user_id: if is_deleted { None } else { c.reply_to_user_id },
+        reply_to_username: if is_deleted {
+            None
+        } else {
+            c.reply_to_username
+        },
         reply_count: reply_counts.get(&c.id).copied().unwrap_or(0),
         reactions: reactions.get(&c.id).cloned().unwrap_or_default(),
         created_at: c.created_at,

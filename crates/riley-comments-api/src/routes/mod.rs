@@ -1,6 +1,7 @@
 pub mod comments;
 pub mod custom_emoji;
 pub mod reactions;
+pub mod users;
 
 use axum::extract::State;
 use axum::response::Json;
@@ -30,5 +31,6 @@ pub fn router(state: Arc<AppState>) -> Router {
         .merge(comments::router(Arc::clone(&state)))
         .merge(reactions::router(Arc::clone(&state)))
         .merge(custom_emoji::router(Arc::clone(&state)))
+        .merge(users::router(Arc::clone(&state)))
         .with_state(state)
 }

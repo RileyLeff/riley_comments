@@ -14,6 +14,8 @@ pub struct Comment {
     pub entity_id: String,
     pub body: String,
     pub depth: i32,
+    pub reply_to_user_id: Option<Uuid>,
+    pub reply_to_username: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -60,6 +62,8 @@ pub struct CommentWithReactions {
     pub entity_id: String,
     pub body: String,
     pub depth: i32,
+    pub reply_to_user_id: Option<Uuid>,
+    pub reply_to_username: Option<String>,
     pub reply_count: i64,
     pub reactions: Vec<ReactionCount>,
     pub created_at: DateTime<Utc>,
@@ -89,6 +93,23 @@ pub struct CustomEmoji {
 pub struct TopReaction {
     pub emoji: String,
     pub total: i64,
+}
+
+/// A single user who reacted with a specific emoji.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct ReactionDetail {
+    pub username: String,
+}
+
+/// User profile card for hover display.
+#[derive(Debug, Clone, Serialize)]
+pub struct UserCard {
+    pub user_id: Uuid,
+    pub username: String,
+    pub comment_count: i64,
+    pub reactions_received: i64,
+    pub riley_points: i64,
+    pub first_seen: DateTime<Utc>,
 }
 
 // ── Pagination ───────────────────────────────────────────────────────

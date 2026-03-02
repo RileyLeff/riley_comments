@@ -16,13 +16,14 @@ use riley_comments_core::models::CreateReaction;
 
 pub fn router(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     let public = Router::new()
-        .route("/reactions/top", get(top_reactions));
+        .route("/reactions/top", get(top_reactions))
+        .route(
+            "/comments/{id}/reactions/{emoji}/users",
+            get(reaction_users),
+        );
 
     let authed = Router::new()
-        .route(
-            "/comments/{id}/reactions",
-            post(add_reaction),
-        )
+        .route("/comments/{id}/reactions", post(add_reaction))
         .route(
             "/comments/{id}/reactions/{emoji}",
             delete(remove_reaction),
@@ -40,6 +41,14 @@ struct TopParams {
 
 fn default_top_limit() -> i64 {
     20
+}
+
+async fn reaction_users(
+    State(state): State<Arc<AppState>>,
+    Path((id, emoji)): Path<(Uuid, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let users = db::reactions::reactors(&state.pool, id, &emoji).await?;
+    Ok(Json(users))
 }
 
 async fn top_reactions(
@@ -67,7 +76,7 @@ async fn add_reaction(
         ApiError(riley_comments_core::Error::Internal("bad user id".to_string()))
     })?;
 
-    db::reactions::add(&state.pool, id, user_id, &input.emoji).await?;
+    db::reactions::add(&state.pool, id, user_id, &claims.username, &input.emoji).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
