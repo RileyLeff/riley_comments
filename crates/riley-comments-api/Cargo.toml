@@ -1,0 +1,22 @@
+[package]
+name = "riley-comments-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+riley-comments-core = { path = "../riley-comments-core" }
+axum.workspace = true
+tower-http.workspace = true
+tower.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+jsonwebtoken.workspace = true
+reqwest.workspace = true
