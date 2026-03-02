@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::auth::{self, Claims};
 use crate::error::{ApiError, ApiResult};
+use crate::notifications::truncate;
 use crate::AppState;
 use riley_comments_core::db;
 use riley_comments_core::models::*;
@@ -75,6 +76,13 @@ async fn create_comment(
         ApiError(riley_comments_core::Error::Internal("bad user id".to_string()))
     })?;
 
+    // If replying, look up the parent so we can notify its author
+    let parent = if let Some(pid) = input.parent_id {
+        Some(db::comments::get(&state.pool, pid).await?)
+    } else {
+        None
+    };
+
     let comment = db::comments::create(
         &state.pool,
         user_id,
@@ -83,6 +91,27 @@ async fn create_comment(
         state.config.comments.max_depth,
     )
     .await?;
+
+    // Notify parent comment author (unless replying to yourself)
+    if let (Some(parent), Some(notif)) = (&parent, &state.notif) {
+        if parent.user_id != user_id {
+            notif.send(
+                parent.user_id,
+                "comment_reply",
+                &format!("{} replied to your comment", claims.username),
+                &truncate(&input.body, 200),
+                Some(&format!(
+                    "/{}/{}#comment-{}",
+                    input.entity_type, input.entity_id, comment.id
+                )),
+                Some(serde_json::json!({
+                    "comment_id": comment.id,
+                    "parent_id": parent.id,
+                    "actor_username": claims.username,
+                })),
+            );
+        }
+    }
 
     Ok((StatusCode::CREATED, Json(comment)))
 }

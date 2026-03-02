@@ -8,6 +8,7 @@ pub struct Config {
     #[serde(default)]
     pub comments: CommentsConfig,
     pub r2: Option<R2Config>,
+    pub notifications: Option<NotificationsConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -62,6 +63,14 @@ pub struct R2Config {
     pub secret_access_key: ConfigValue,
     /// Public URL prefix for serving images (e.g., "https://emoji.rileyleff.com" or R2.dev URL)
     pub public_url: ConfigValue,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NotificationsConfig {
+    /// Base URL of the notifications service (e.g. "http://riley-notifications:8084")
+    pub url: String,
+    /// API token for service-to-service auth
+    pub api_token: ConfigValue,
 }
 
 /// A config value that can be a direct string or an env var reference.

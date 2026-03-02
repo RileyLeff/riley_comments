@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use crate::auth::{self, Claims};
 use crate::error::{ApiError, ApiResult};
+use crate::notifications::truncate;
 use crate::AppState;
 use riley_comments_core::db;
 use riley_comments_core::models::CreateReaction;
@@ -77,6 +78,30 @@ async fn add_reaction(
     })?;
 
     db::reactions::add(&state.pool, id, user_id, &claims.username, &input.emoji).await?;
+
+    // Notify comment author about the reaction (unless reacting to your own comment)
+    if let Some(notif) = &state.notif {
+        if let Ok(comment) = db::comments::get(&state.pool, id).await {
+            if comment.user_id != user_id {
+                notif.send(
+                    comment.user_id,
+                    "comment_reaction",
+                    &format!("{} reacted {} to your comment", claims.username, input.emoji),
+                    &truncate(&comment.body, 200),
+                    Some(&format!(
+                        "/{}/{}#comment-{}",
+                        comment.entity_type, comment.entity_id, comment.id
+                    )),
+                    Some(serde_json::json!({
+                        "comment_id": comment.id,
+                        "emoji": input.emoji,
+                        "actor_username": claims.username,
+                    })),
+                );
+            }
+        }
+    }
+
     Ok(StatusCode::NO_CONTENT)
 }
 

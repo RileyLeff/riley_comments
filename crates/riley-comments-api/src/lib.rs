@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod error;
+pub mod notifications;
 pub mod routes;
 
 use auth::JwksCache;
@@ -24,6 +25,7 @@ pub struct AppState {
     pub pool: PgPool,
     pub jwks: Arc<JwksCache>,
     pub r2: Option<R2Client>,
+    pub notif: Option<notifications::NotificationsClient>,
 }
 
 pub async fn serve(config: Config, pool: PgPool) -> anyhow::Result<()> {
@@ -74,6 +76,18 @@ pub async fn serve(config: Config, pool: PgPool) -> anyhow::Result<()> {
         None
     };
 
+    let notif = if let Some(notif_config) = &config.notifications {
+        let token = notif_config.api_token.resolve()?;
+        tracing::info!(url = %notif_config.url, "notifications client initialized");
+        Some(notifications::NotificationsClient::new(
+            notif_config.url.clone(),
+            token,
+        ))
+    } else {
+        tracing::info!("notifications not configured, notifications disabled");
+        None
+    };
+
     let cors = build_cors(&config.server.cors_origins);
 
     let state = Arc::new(AppState {
@@ -81,6 +95,7 @@ pub async fn serve(config: Config, pool: PgPool) -> anyhow::Result<()> {
         pool,
         jwks: Arc::clone(&jwks),
         r2,
+        notif,
     });
 
     let app = Router::new()
