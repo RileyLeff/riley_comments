@@ -61,7 +61,7 @@ pub struct R2Config {
     pub access_key_id: ConfigValue,
     pub secret_access_key: ConfigValue,
     /// Public URL prefix for serving images (e.g., "https://emoji.rileyleff.com" or R2.dev URL)
-    pub public_url: String,
+    pub public_url: ConfigValue,
 }
 
 /// A config value that can be a direct string or an env var reference.

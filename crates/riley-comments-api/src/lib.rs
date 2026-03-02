@@ -67,7 +67,7 @@ pub async fn serve(config: Config, pool: PgPool) -> anyhow::Result<()> {
         Some(R2Client {
             client,
             bucket: r2_config.bucket.clone(),
-            public_url: r2_config.public_url.clone(),
+            public_url: r2_config.public_url.resolve()?,
         })
     } else {
         tracing::info!("R2 not configured, custom emoji upload disabled");
