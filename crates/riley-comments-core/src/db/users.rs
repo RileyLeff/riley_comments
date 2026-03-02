@@ -9,9 +9,9 @@ use crate::{Error, Result};
 pub async fn get_card(pool: &PgPool, user_id: Uuid) -> Result<UserCard> {
     #[derive(sqlx::FromRow)]
     struct Row {
-        username: String,
+        username: Option<String>,
         comment_count: i64,
-        first_seen: chrono::DateTime<chrono::Utc>,
+        first_seen: Option<chrono::DateTime<chrono::Utc>>,
     }
 
     let row = sqlx::query_as::<_, Row>(
@@ -21,17 +21,17 @@ pub async fn get_card(pool: &PgPool, user_id: Uuid) -> Result<UserCard> {
                (SELECT MIN(created_at) FROM comments WHERE user_id = $1) as first_seen"#,
     )
     .bind(user_id)
-    .fetch_optional(pool)
+    .fetch_one(pool)
     .await?;
 
-    let Some(row) = row else {
-        return Err(Error::NotFound(format!("user {user_id} not found")));
-    };
+    let username = row
+        .username
+        .filter(|u| !u.is_empty())
+        .ok_or_else(|| Error::NotFound(format!("user {user_id} not found")))?;
 
-    // username could be NULL if no non-deleted comments exist
-    if row.username.is_empty() {
-        return Err(Error::NotFound(format!("user {user_id} not found")));
-    }
+    let first_seen = row
+        .first_seen
+        .ok_or_else(|| Error::NotFound(format!("user {user_id} not found")))?;
 
     // Count reactions received on this user's comments
     let reactions_received: (i64,) = sqlx::query_as(
@@ -48,10 +48,10 @@ pub async fn get_card(pool: &PgPool, user_id: Uuid) -> Result<UserCard> {
 
     Ok(UserCard {
         user_id,
-        username: row.username,
+        username,
         comment_count,
         reactions_received,
         riley_points: comment_count + reactions_received,
-        first_seen: row.first_seen,
+        first_seen,
     })
 }
