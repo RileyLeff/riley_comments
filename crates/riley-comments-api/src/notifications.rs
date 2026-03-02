@@ -1,11 +1,12 @@
 use serde::Serialize;
 use uuid::Uuid;
 
-/// Fire-and-forget HTTP client for sending notifications to riley_notifications.
+/// Fire-and-forget HTTP client for sending notifications to a downstream service.
+/// Used for both riley_notifications (/notifications) and riley_emails (/emails).
 #[derive(Clone)]
 pub struct NotificationsClient {
     http: reqwest::Client,
-    base_url: String,
+    endpoint: String,
     api_token: String,
 }
 
@@ -22,10 +23,10 @@ struct CreateNotification {
 }
 
 impl NotificationsClient {
-    pub fn new(base_url: String, api_token: String) -> Self {
+    pub fn new(base_url: String, path: &str, api_token: String) -> Self {
         Self {
             http: reqwest::Client::new(),
-            base_url,
+            endpoint: format!("{base_url}{path}"),
             api_token,
         }
     }
@@ -49,10 +50,9 @@ impl NotificationsClient {
             metadata,
         };
 
-        let endpoint = format!("{}/notifications", self.base_url);
         let req = self
             .http
-            .post(&endpoint)
+            .post(&self.endpoint)
             .header("x-api-token", &self.api_token)
             .json(&payload);
 

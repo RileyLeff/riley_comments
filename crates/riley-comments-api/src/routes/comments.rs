@@ -93,23 +93,27 @@ async fn create_comment(
     .await?;
 
     // Notify parent comment author (unless replying to yourself)
-    if let (Some(parent), Some(notif)) = (&parent, &state.notif) {
+    if let Some(parent) = &parent {
         if parent.user_id != user_id {
-            notif.send(
-                parent.user_id,
-                "comment_reply",
-                &format!("{} replied to your comment", claims.username),
-                &truncate(&input.body, 200),
-                Some(&format!(
-                    "/{}/{}#comment-{}",
-                    input.entity_type, input.entity_id, comment.id
-                )),
-                Some(serde_json::json!({
-                    "comment_id": comment.id,
-                    "parent_id": parent.id,
-                    "actor_username": claims.username,
-                })),
-            );
+            let title = format!("{} replied to your comment", claims.username);
+            let body = truncate(&input.body, 200);
+            let url = format!("/{}/{}#comment-{}", input.entity_type, input.entity_id, comment.id);
+            let metadata = serde_json::json!({
+                "comment_id": comment.id,
+                "parent_id": parent.id,
+                "actor_username": claims.username,
+            });
+
+            for client in [&state.notif, &state.email].into_iter().flatten() {
+                client.send(
+                    parent.user_id,
+                    "comment_reply",
+                    &title,
+                    &body,
+                    Some(&url),
+                    Some(metadata.clone()),
+                );
+            }
         }
     }
 

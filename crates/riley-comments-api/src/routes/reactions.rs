@@ -80,23 +80,25 @@ async fn add_reaction(
     db::reactions::add(&state.pool, id, user_id, &claims.username, &input.emoji).await?;
 
     // Notify comment author about the reaction (unless reacting to your own comment)
-    if let Some(notif) = &state.notif {
-        if let Ok(comment) = db::comments::get(&state.pool, id).await {
-            if comment.user_id != user_id {
-                notif.send(
+    if let Ok(comment) = db::comments::get(&state.pool, id).await {
+        if comment.user_id != user_id {
+            let title = format!("{} reacted {} to your comment", claims.username, input.emoji);
+            let body = truncate(&comment.body, 200);
+            let url = format!("/{}/{}#comment-{}", comment.entity_type, comment.entity_id, comment.id);
+            let metadata = serde_json::json!({
+                "comment_id": comment.id,
+                "emoji": input.emoji,
+                "actor_username": claims.username,
+            });
+
+            for client in [&state.notif, &state.email].into_iter().flatten() {
+                client.send(
                     comment.user_id,
                     "comment_reaction",
-                    &format!("{} reacted {} to your comment", claims.username, input.emoji),
-                    &truncate(&comment.body, 200),
-                    Some(&format!(
-                        "/{}/{}#comment-{}",
-                        comment.entity_type, comment.entity_id, comment.id
-                    )),
-                    Some(serde_json::json!({
-                        "comment_id": comment.id,
-                        "emoji": input.emoji,
-                        "actor_username": claims.username,
-                    })),
+                    &title,
+                    &body,
+                    Some(&url),
+                    Some(metadata.clone()),
                 );
             }
         }
