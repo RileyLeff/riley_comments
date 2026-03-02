@@ -189,7 +189,7 @@ pub async fn require_auth(
         .cloned()
         .ok_or_else(|| error_response(StatusCode::INTERNAL_SERVER_ERROR, "auth not configured"))?;
 
-    let token = extract_bearer(&request)
+    let token = extract_token(&request)
         .ok_or_else(|| error_response(StatusCode::UNAUTHORIZED, "missing authorization header"))?;
 
     let claims = jwks.verify(&token).await?;
@@ -208,7 +208,7 @@ pub async fn optional_auth(
     let jwks = request.extensions().get::<Arc<JwksCache>>().cloned();
 
     if let Some(jwks) = jwks {
-        if let Some(token) = extract_bearer(&request) {
+        if let Some(token) = extract_token(&request) {
             if let Ok(claims) = jwks.verify(&token).await {
                 let mut request = request;
                 request.extensions_mut().insert(claims);
@@ -220,13 +220,30 @@ pub async fn optional_auth(
     next.run(request).await
 }
 
-fn extract_bearer(request: &Request) -> Option<String> {
-    request
+fn extract_token(request: &Request) -> Option<String> {
+    // Try Authorization: Bearer header first
+    if let Some(token) = request
         .headers()
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .map(|s| s.to_string())
+    {
+        return Some(token.to_string());
+    }
+
+    // Fall back to auth_access cookie
+    request
+        .headers()
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|cookies| {
+            cookies
+                .split(';')
+                .map(|s| s.trim())
+                .find(|s| s.starts_with("auth_access="))
+                .and_then(|s| s.strip_prefix("auth_access="))
+                .map(|s| s.to_string())
+        })
 }
 
 fn error_response(status: StatusCode, message: &str) -> Response {
