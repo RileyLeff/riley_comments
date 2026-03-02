@@ -1,8 +1,7 @@
 use serde::Serialize;
 use uuid::Uuid;
 
-/// Fire-and-forget HTTP client for sending notifications to a downstream service.
-/// Used for both riley_notifications (/notifications) and riley_emails (/emails).
+/// Fire-and-forget HTTP client for sending notifications to riley_notifications.
 #[derive(Clone)]
 pub struct NotificationsClient {
     http: reqwest::Client,

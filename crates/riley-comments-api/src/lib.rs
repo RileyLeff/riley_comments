@@ -26,7 +26,6 @@ pub struct AppState {
     pub jwks: Arc<JwksCache>,
     pub r2: Option<R2Client>,
     pub notif: Option<notifications::NotificationsClient>,
-    pub email: Option<notifications::NotificationsClient>,
 }
 
 pub async fn serve(config: Config, pool: PgPool) -> anyhow::Result<()> {
@@ -90,19 +89,6 @@ pub async fn serve(config: Config, pool: PgPool) -> anyhow::Result<()> {
         None
     };
 
-    let email = if let Some(email_config) = &config.emails {
-        let token = email_config.api_token.resolve()?;
-        tracing::info!(url = %email_config.url, "email client initialized");
-        Some(notifications::NotificationsClient::new(
-            email_config.url.clone(),
-            "/emails",
-            token,
-        ))
-    } else {
-        tracing::info!("emails not configured, email notifications disabled");
-        None
-    };
-
     let cors = build_cors(&config.server.cors_origins);
 
     let state = Arc::new(AppState {
@@ -111,7 +97,6 @@ pub async fn serve(config: Config, pool: PgPool) -> anyhow::Result<()> {
         jwks: Arc::clone(&jwks),
         r2,
         notif,
-        email,
     });
 
     let app = Router::new()

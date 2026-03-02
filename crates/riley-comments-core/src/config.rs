@@ -9,7 +9,6 @@ pub struct Config {
     pub comments: CommentsConfig,
     pub r2: Option<R2Config>,
     pub notifications: Option<NotificationsConfig>,
-    pub emails: Option<NotificationsConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -91,14 +91,14 @@ async fn add_reaction(
                 "actor_username": claims.username,
             });
 
-            for client in [&state.notif, &state.email].into_iter().flatten() {
-                client.send(
+            if let Some(notif) = &state.notif {
+                notif.send(
                     comment.user_id,
                     "comment_reaction",
                     &title,
                     &body,
                     Some(&url),
-                    Some(metadata.clone()),
+                    Some(metadata),
                 );
             }
         }

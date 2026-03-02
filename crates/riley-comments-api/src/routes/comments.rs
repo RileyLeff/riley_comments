@@ -104,14 +104,14 @@ async fn create_comment(
                 "actor_username": claims.username,
             });
 
-            for client in [&state.notif, &state.email].into_iter().flatten() {
-                client.send(
+            if let Some(notif) = &state.notif {
+                notif.send(
                     parent.user_id,
                     "comment_reply",
                     &title,
                     &body,
                     Some(&url),
-                    Some(metadata.clone()),
+                    Some(metadata),
                 );
             }
         }
