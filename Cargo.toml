@@ -48,6 +48,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 clap = { version = "4", features = ["derive", "env"] }
 
 # object storage (R2)
-aws-sdk-s3 = "1"
+aws-sdk-s3 = { version = "1", features = ["behavior-version-latest"] }
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-credential-types = "1"
