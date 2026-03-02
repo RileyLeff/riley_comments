@@ -1,4 +1,5 @@
 pub mod comments;
+pub mod custom_emoji;
 pub mod reactions;
 
 use crate::config::DatabaseConfig;

@@ -6,11 +6,13 @@ use crate::{Error, Result};
 
 /// List comments for an entity, with cursor-based pagination.
 /// Returns top-level comments and their replies in chronological order.
+/// If `current_user_id` is provided, reaction responses include `user_reacted`.
 pub async fn list(
     pool: &PgPool,
     entity_type: &str,
     entity_id: &str,
     params: &PaginationParams,
+    current_user_id: Option<Uuid>,
 ) -> Result<PaginatedResponse<CommentWithReactions>> {
     let limit = params.effective_limit();
     let cursor = params.decode_cursor()?;
@@ -91,7 +93,7 @@ pub async fn list(
     let all_ids: Vec<Uuid> = all_comments.iter().map(|c| c.id).collect();
 
     // Fetch reactions and reply counts
-    let reaction_counts = super::reactions::counts_for_comments(pool, &all_ids).await?;
+    let reaction_counts = super::reactions::counts_for_comments(pool, &all_ids, current_user_id).await?;
     let reply_counts = reply_counts(pool, &all_ids).await?;
 
     // Also include soft-deleted comments that have non-deleted replies

@@ -13,10 +13,17 @@ use tokio::net::TcpListener;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
+pub struct R2Client {
+    pub client: aws_sdk_s3::Client,
+    pub bucket: String,
+    pub public_url: String,
+}
+
 pub struct AppState {
     pub config: Config,
     pub pool: PgPool,
     pub jwks: Arc<JwksCache>,
+    pub r2: Option<R2Client>,
 }
 
 pub async fn serve(config: Config, pool: PgPool) -> anyhow::Result<()> {
@@ -33,12 +40,47 @@ pub async fn serve(config: Config, pool: PgPool) -> anyhow::Result<()> {
     jwks.refresh().await?;
     jwks.spawn_refresh_task();
 
+    // Set up R2 client if configured
+    let r2 = if let Some(r2_config) = &config.r2 {
+        let endpoint = r2_config.endpoint.resolve()?;
+        let access_key = r2_config.access_key_id.resolve()?;
+        let secret_key = r2_config.secret_access_key.resolve()?;
+
+        let creds = aws_credential_types::Credentials::new(
+            access_key,
+            secret_key,
+            None,
+            None,
+            "riley-comments",
+        );
+
+        let s3_config = aws_sdk_s3::Config::builder()
+            .endpoint_url(&endpoint)
+            .region(aws_sdk_s3::config::Region::new("auto"))
+            .credentials_provider(creds)
+            .force_path_style(true)
+            .build();
+
+        let client = aws_sdk_s3::Client::from_conf(s3_config);
+        tracing::info!(bucket = %r2_config.bucket, "R2 client initialized");
+
+        Some(R2Client {
+            client,
+            bucket: r2_config.bucket.clone(),
+            public_url: r2_config.public_url.clone(),
+        })
+    } else {
+        tracing::info!("R2 not configured, custom emoji upload disabled");
+        None
+    };
+
     let cors = build_cors(&config.server.cors_origins);
 
     let state = Arc::new(AppState {
         config,
         pool,
         jwks: Arc::clone(&jwks),
+        r2,
     });
 
     let app = Router::new()

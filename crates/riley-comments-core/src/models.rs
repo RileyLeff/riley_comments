@@ -71,6 +71,24 @@ pub struct CommentWithReactions {
 pub struct ReactionCount {
     pub emoji: String,
     pub count: i64,
+    pub user_reacted: bool,
+}
+
+/// A custom emoji available for reactions.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct CustomEmoji {
+    pub id: Uuid,
+    pub name: String,
+    pub image_url: String,
+    pub created_by: Uuid,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Top-used reaction emoji across all comments.
+#[derive(Debug, Clone, Serialize)]
+pub struct TopReaction {
+    pub emoji: String,
+    pub total: i64,
 }
 
 // ── Pagination ───────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 pub mod comments;
+pub mod custom_emoji;
 pub mod reactions;
 
 use axum::extract::State;
@@ -28,5 +29,6 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/health", get(health))
         .merge(comments::router(Arc::clone(&state)))
         .merge(reactions::router(Arc::clone(&state)))
+        .merge(custom_emoji::router(Arc::clone(&state)))
         .with_state(state)
 }

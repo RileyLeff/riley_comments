@@ -35,10 +35,13 @@ pub fn router(_state: Arc<AppState>) -> Router<Arc<AppState>> {
 
 async fn list_comments(
     State(state): State<Arc<AppState>>,
+    claims: Option<axum::Extension<Claims>>,
     Path((entity_type, entity_id)): Path<(String, String)>,
     Query(params): Query<PaginationParams>,
 ) -> ApiResult<impl IntoResponse> {
-    let page = db::comments::list(&state.pool, &entity_type, &entity_id, &params).await?;
+    let current_user_id = claims
+        .and_then(|c| c.0.user_id().ok());
+    let page = db::comments::list(&state.pool, &entity_type, &entity_id, &params, current_user_id).await?;
     Ok(Json(page))
 }
 

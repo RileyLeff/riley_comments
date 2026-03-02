@@ -7,6 +7,7 @@ pub struct Config {
     pub auth: AuthConfig,
     #[serde(default)]
     pub comments: CommentsConfig,
+    pub r2: Option<R2Config>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -51,6 +52,16 @@ impl Default for CommentsConfig {
             max_body_length: default_max_body_length(),
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct R2Config {
+    pub endpoint: ConfigValue,
+    pub bucket: String,
+    pub access_key_id: ConfigValue,
+    pub secret_access_key: ConfigValue,
+    /// Public URL prefix for serving images (e.g., "https://emoji.rileyleff.com" or R2.dev URL)
+    pub public_url: String,
 }
 
 /// A config value that can be a direct string or an env var reference.

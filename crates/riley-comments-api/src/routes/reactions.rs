@@ -1,9 +1,10 @@
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Json};
-use axum::routing::{delete, post};
+use axum::routing::{delete, get, post};
 use axum::Router;
+use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -14,7 +15,10 @@ use riley_comments_core::db;
 use riley_comments_core::models::CreateReaction;
 
 pub fn router(_state: Arc<AppState>) -> Router<Arc<AppState>> {
-    Router::new()
+    let public = Router::new()
+        .route("/reactions/top", get(top_reactions));
+
+    let authed = Router::new()
         .route(
             "/comments/{id}/reactions",
             post(add_reaction),
@@ -23,7 +27,28 @@ pub fn router(_state: Arc<AppState>) -> Router<Arc<AppState>> {
             "/comments/{id}/reactions/{emoji}",
             delete(remove_reaction),
         )
-        .layer(middleware::from_fn(auth::require_auth))
+        .layer(middleware::from_fn(auth::require_auth));
+
+    public.merge(authed)
+}
+
+#[derive(Deserialize)]
+struct TopParams {
+    #[serde(default = "default_top_limit")]
+    limit: i64,
+}
+
+fn default_top_limit() -> i64 {
+    20
+}
+
+async fn top_reactions(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<TopParams>,
+) -> ApiResult<impl IntoResponse> {
+    let limit = params.limit.clamp(1, 100);
+    let top = db::reactions::top_reactions(&state.pool, limit).await?;
+    Ok(Json(top))
 }
 
 async fn add_reaction(
