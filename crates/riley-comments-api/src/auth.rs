@@ -23,14 +23,8 @@ pub struct Claims {
 }
 
 impl Claims {
-    pub fn user_id(&self) -> Result<Uuid, Response> {
-        self.sub.parse().map_err(|_| {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({"error": "invalid user id in token"})),
-            )
-                .into_response()
-        })
+    pub fn user_id(&self) -> Result<Uuid, uuid::Error> {
+        self.sub.parse()
     }
 
     pub fn is_admin(&self) -> bool {
@@ -213,14 +207,13 @@ pub async fn require_auth(request: Request, next: Next) -> Result<Response, Resp
 pub async fn optional_auth(request: Request, next: Next) -> Response {
     let jwks = request.extensions().get::<Arc<JwksCache>>().cloned();
 
-    if let Some(jwks) = jwks {
-        if let Some(token) = extract_token(&request) {
-            if let Ok(claims) = jwks.verify(&token).await {
-                let mut request = request;
-                request.extensions_mut().insert(claims);
-                return next.run(request).await;
-            }
-        }
+    if let Some(jwks) = jwks
+        && let Some(token) = extract_token(&request)
+        && let Ok(claims) = jwks.verify(&token).await
+    {
+        let mut request = request;
+        request.extensions_mut().insert(claims);
+        return next.run(request).await;
     }
 
     next.run(request).await

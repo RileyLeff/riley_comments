@@ -79,33 +79,33 @@ async fn add_reaction(
     db::reactions::add(&state.pool, id, user_id, &claims.username, &input.emoji).await?;
 
     // Notify comment author about the reaction (unless reacting to your own comment)
-    if let Ok(comment) = db::comments::get(&state.pool, id).await {
-        if comment.user_id != user_id {
-            let title = format!(
-                "{} reacted {} to your comment",
-                claims.username, input.emoji
-            );
-            let body = truncate(&comment.body, 200);
-            let url = format!(
-                "/{}/{}#comment-{}",
-                comment.entity_type, comment.entity_id, comment.id
-            );
-            let metadata = serde_json::json!({
-                "comment_id": comment.id,
-                "emoji": input.emoji,
-                "actor_username": claims.username,
-            });
+    if let Ok(comment) = db::comments::get(&state.pool, id).await
+        && comment.user_id != user_id
+    {
+        let title = format!(
+            "{} reacted {} to your comment",
+            claims.username, input.emoji
+        );
+        let body = truncate(&comment.body, 200);
+        let url = format!(
+            "/{}/{}#comment-{}",
+            comment.entity_type, comment.entity_id, comment.id
+        );
+        let metadata = serde_json::json!({
+            "comment_id": comment.id,
+            "emoji": input.emoji,
+            "actor_username": claims.username,
+        });
 
-            if let Some(notif) = &state.notif {
-                notif.send(
-                    comment.user_id,
-                    "comment_reaction",
-                    &title,
-                    &body,
-                    Some(&url),
-                    Some(metadata),
-                );
-            }
+        if let Some(notif) = &state.notif {
+            notif.send(
+                comment.user_id,
+                "comment_reaction",
+                &title,
+                &body,
+                Some(&url),
+                Some(metadata),
+            );
         }
     }
 

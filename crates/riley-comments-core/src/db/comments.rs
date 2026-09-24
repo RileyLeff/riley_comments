@@ -124,7 +124,7 @@ pub async fn list(
     }
 
     // Sort by created_at for consistent ordering
-    items.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    items.sort_by_key(|a| a.created_at);
 
     Ok(PaginatedResponse { items, next_cursor })
 }

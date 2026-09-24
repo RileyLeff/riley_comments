@@ -42,10 +42,10 @@ pub async fn create(
     .fetch_one(pool)
     .await
     .map_err(|e| {
-        if let sqlx::Error::Database(ref db_err) = e {
-            if db_err.constraint() == Some("custom_emojis_name_key") {
-                return Error::Validation(format!("emoji name '{name}' already exists"));
-            }
+        if let sqlx::Error::Database(ref db_err) = e
+            && db_err.constraint() == Some("custom_emojis_name_key")
+        {
+            return Error::Validation(format!("emoji name '{name}' already exists"));
         }
         e.into()
     })?;
