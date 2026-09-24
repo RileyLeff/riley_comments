@@ -1,11 +1,26 @@
 use sqlx::PgPool;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::models::*;
 use crate::{Error, Result};
 
+/// A top-level comment is listed if it is live, or if it was deleted but
+/// still has a live descendant somewhere below it (shown as a placeholder).
+const ROOT_IS_VISIBLE: &str = r#"(c.deleted_at IS NULL OR EXISTS (
+        WITH RECURSIVE below AS (
+            SELECT id, deleted_at FROM comments WHERE parent_id = c.id
+          UNION ALL
+            SELECT k.id, k.deleted_at FROM comments k
+            INNER JOIN below b ON k.parent_id = b.id
+        )
+        SELECT 1 FROM below WHERE below.deleted_at IS NULL
+    ))"#;
+
 /// List comments for an entity, with cursor-based pagination.
 /// Returns top-level comments and their replies in chronological order.
+/// Deleted comments that still have live replies below them are kept as
+/// scrubbed `[deleted]` placeholders so those replies stay attached.
 /// If `current_user_id` is provided, reaction responses include `user_reacted`.
 pub async fn list(
     pool: &PgPool,
@@ -19,14 +34,14 @@ pub async fn list(
 
     // Fetch top-level comments (depth 0) with pagination
     let top_level: Vec<Comment> = if let Some((ts, id)) = cursor {
-        sqlx::query_as::<_, Comment>(
-            r#"SELECT * FROM comments
-               WHERE entity_type = $1 AND entity_id = $2
-                 AND depth = 0 AND deleted_at IS NULL
-                 AND (created_at, id) > ($3, $4)
-               ORDER BY created_at ASC, id ASC
-               LIMIT $5"#,
-        )
+        sqlx::query_as::<_, Comment>(&format!(
+            r#"SELECT c.* FROM comments c
+               WHERE c.entity_type = $1 AND c.entity_id = $2
+                 AND c.depth = 0 AND {ROOT_IS_VISIBLE}
+                 AND (c.created_at, c.id) > ($3, $4)
+               ORDER BY c.created_at ASC, c.id ASC
+               LIMIT $5"#
+        ))
         .bind(entity_type)
         .bind(entity_id)
         .bind(ts)
@@ -35,13 +50,13 @@ pub async fn list(
         .fetch_all(pool)
         .await?
     } else {
-        sqlx::query_as::<_, Comment>(
-            r#"SELECT * FROM comments
-               WHERE entity_type = $1 AND entity_id = $2
-                 AND depth = 0 AND deleted_at IS NULL
-               ORDER BY created_at ASC, id ASC
-               LIMIT $3"#,
-        )
+        sqlx::query_as::<_, Comment>(&format!(
+            r#"SELECT c.* FROM comments c
+               WHERE c.entity_type = $1 AND c.entity_id = $2
+                 AND c.depth = 0 AND {ROOT_IS_VISIBLE}
+               ORDER BY c.created_at ASC, c.id ASC
+               LIMIT $3"#
+        ))
         .bind(entity_type)
         .bind(entity_id)
         .bind(limit + 1)
@@ -70,26 +85,28 @@ pub async fn list(
     // Collect all top-level IDs to fetch their replies
     let top_ids: Vec<Uuid> = top_level.iter().map(|c| c.id).collect();
 
-    // Fetch all replies (any depth) for these top-level comments.
-    // We use a recursive CTE to get the full thread.
+    // Fetch every reply (any depth, deleted or not) under these top-level
+    // comments; deleted ones without live descendants are pruned below.
     let replies: Vec<Comment> = sqlx::query_as::<_, Comment>(
         r#"WITH RECURSIVE thread AS (
                SELECT * FROM comments
-               WHERE parent_id = ANY($1) AND deleted_at IS NULL
+               WHERE parent_id = ANY($1)
              UNION ALL
                SELECT c.* FROM comments c
                INNER JOIN thread t ON c.parent_id = t.id
-               WHERE c.deleted_at IS NULL
            )
-           SELECT * FROM thread ORDER BY created_at ASC"#,
+           SELECT * FROM thread ORDER BY created_at ASC, id ASC"#,
     )
     .bind(&top_ids)
     .fetch_all(pool)
     .await?;
 
-    // Collect all comment IDs (top-level + replies) for reaction lookup
     let mut all_comments: Vec<Comment> = top_level;
     all_comments.extend(replies);
+    let visible = visible_ids(&all_comments);
+    all_comments.retain(|c| visible.contains(&c.id));
+
+    // Collect all comment IDs (top-level + replies) for reaction lookup
     let all_ids: Vec<Uuid> = all_comments.iter().map(|c| c.id).collect();
 
     // Fetch reactions and reply counts
@@ -97,36 +114,34 @@ pub async fn list(
         super::reactions::counts_for_comments(pool, &all_ids, current_user_id).await?;
     let reply_counts = reply_counts(pool, &all_ids).await?;
 
-    // Also include soft-deleted comments that have non-deleted replies
-    // (show as "[deleted]" in the UI)
-    let deleted_parents: Vec<Comment> = sqlx::query_as::<_, Comment>(
-        r#"SELECT DISTINCT c.* FROM comments c
-           INNER JOIN comments r ON r.parent_id = c.id AND r.deleted_at IS NULL
-           WHERE c.id = ANY($1) AND c.deleted_at IS NOT NULL"#,
-    )
-    .bind(&all_ids)
-    .fetch_all(pool)
-    .await?;
-
     // Build response items
     let mut items: Vec<CommentWithReactions> = all_comments
         .into_iter()
-        .map(|c| build_comment_response(c, &reaction_counts, &reply_counts, false))
+        .map(|c| build_comment_response(c, &reaction_counts, &reply_counts))
         .collect();
-
-    for c in deleted_parents {
-        items.push(build_comment_response(
-            c,
-            &reaction_counts,
-            &reply_counts,
-            true,
-        ));
-    }
 
     // Sort by created_at for consistent ordering
     items.sort_by_key(|a| a.created_at);
 
     Ok(PaginatedResponse { items, next_cursor })
+}
+
+/// Ids of the comments to show: every live comment, plus every deleted
+/// ancestor of one, so surviving replies keep their place in the thread.
+fn visible_ids(comments: &[Comment]) -> HashSet<Uuid> {
+    let parents: HashMap<Uuid, Option<Uuid>> =
+        comments.iter().map(|c| (c.id, c.parent_id)).collect();
+    let mut visible = HashSet::new();
+    for live in comments.iter().filter(|c| c.deleted_at.is_none()) {
+        let mut next = Some(live.id);
+        while let Some(id) = next {
+            if !visible.insert(id) {
+                break; // this ancestor chain is already marked
+            }
+            next = parents.get(&id).copied().flatten();
+        }
+    }
+    visible
 }
 
 /// Get a single comment by ID.
@@ -279,40 +294,92 @@ async fn reply_counts(pool: &PgPool, ids: &[Uuid]) -> Result<std::collections::H
     Ok(rows.into_iter().map(|r| (r.parent_id, r.count)).collect())
 }
 
+/// Deleted comments become scrubbed placeholders: no body, author, or
+/// reactions, matching how the site renders `deleted: true`.
 fn build_comment_response(
     c: Comment,
-    reactions: &std::collections::HashMap<Uuid, Vec<ReactionCount>>,
-    reply_counts: &std::collections::HashMap<Uuid, i64>,
-    deleted: bool,
+    reactions: &HashMap<Uuid, Vec<ReactionCount>>,
+    reply_counts: &HashMap<Uuid, i64>,
 ) -> CommentWithReactions {
-    let is_deleted = deleted || c.deleted_at.is_some();
+    let reply_count = reply_counts.get(&c.id).copied().unwrap_or(0);
+    if c.deleted_at.is_some() {
+        return CommentWithReactions {
+            id: c.id,
+            parent_id: c.parent_id,
+            user_id: Uuid::nil(),
+            username: "[deleted]".to_string(),
+            entity_type: c.entity_type,
+            entity_id: c.entity_id,
+            body: "[deleted]".to_string(),
+            depth: c.depth,
+            reply_to_user_id: None,
+            reply_to_username: None,
+            reply_count,
+            reactions: vec![],
+            created_at: c.created_at,
+            updated_at: c.created_at,
+            deleted: true,
+        };
+    }
     CommentWithReactions {
         id: c.id,
         parent_id: c.parent_id,
         user_id: c.user_id,
-        username: if is_deleted {
-            "[deleted]".to_string()
-        } else {
-            c.username
-        },
+        username: c.username,
         entity_type: c.entity_type,
         entity_id: c.entity_id,
-        body: if is_deleted {
-            "[deleted]".to_string()
-        } else {
-            c.body
-        },
+        body: c.body,
         depth: c.depth,
-        reply_to_user_id: if is_deleted { None } else { c.reply_to_user_id },
-        reply_to_username: if is_deleted {
-            None
-        } else {
-            c.reply_to_username
-        },
-        reply_count: reply_counts.get(&c.id).copied().unwrap_or(0),
+        reply_to_user_id: c.reply_to_user_id,
+        reply_to_username: c.reply_to_username,
+        reply_count,
         reactions: reactions.get(&c.id).cloned().unwrap_or_default(),
         created_at: c.created_at,
         updated_at: c.updated_at,
-        deleted: is_deleted,
+        deleted: false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+
+    fn comment(id: u128, parent: Option<u128>, deleted: bool) -> Comment {
+        Comment {
+            id: Uuid::from_u128(id),
+            parent_id: parent.map(Uuid::from_u128),
+            user_id: Uuid::nil(),
+            username: String::new(),
+            entity_type: String::new(),
+            entity_id: String::new(),
+            body: String::new(),
+            depth: 0,
+            reply_to_user_id: None,
+            reply_to_username: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            deleted_at: deleted.then(Utc::now),
+        }
+    }
+
+    #[test]
+    fn deleted_ancestors_of_live_comments_stay_visible() {
+        // 1(del) -> 2(del) -> 3(live); 1 -> 4(del); 5(del) -> 6(del); 7(live)
+        let comments = vec![
+            comment(1, None, true),
+            comment(2, Some(1), true),
+            comment(3, Some(2), false),
+            comment(4, Some(1), true),
+            comment(5, None, true),
+            comment(6, Some(5), true),
+            comment(7, None, false),
+        ];
+        let mut visible: Vec<u128> = visible_ids(&comments)
+            .into_iter()
+            .map(|id| id.as_u128())
+            .collect();
+        visible.sort();
+        assert_eq!(visible, vec![1, 2, 3, 7]);
     }
 }
