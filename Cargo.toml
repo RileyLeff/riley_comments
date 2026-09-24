@@ -9,7 +9,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.94.1"
 
 [workspace.dependencies]
 # async runtime
@@ -48,6 +48,14 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 clap = { version = "4", features = ["derive", "env"] }
 
 # object storage (R2)
-aws-sdk-s3 = { version = "1", features = ["behavior-version-latest"] }
+# default-features = false drops the "rustls" feature, which pulls in the legacy
+# hyper 0.14 / rustls 0.21 client (h2 0.3, rustls-webpki 0.101 RustSec advisories).
+aws-sdk-s3 = { version = "1", default-features = false, features = [
+    "behavior-version-latest",
+    "default-https-client",
+    "rt-tokio",
+    "sigv4a",
+    "http-1x",
+] }
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-credential-types = "1"

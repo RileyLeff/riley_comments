@@ -1,0 +1,5 @@
+[advisories]
+# RUSTSEC-2023-0071 (rsa Marvin attack): rsa is only referenced by sqlx-mysql,
+# which appears in Cargo.lock but is never compiled (the mysql feature is off).
+# Verify with `cargo tree -i rsa` (prints nothing).
+ignore = ["RUSTSEC-2023-0071"]
