@@ -21,6 +21,27 @@ pub struct ServerConfig {
     pub cors_origins: Vec<String>,
     #[serde(default)]
     pub behind_proxy: bool,
+    /// Origins allowed to make state-changing (POST/PUT/PATCH/DELETE) requests,
+    /// checked against the Origin header (Referer as fallback) for CSRF protection,
+    /// e.g. `["https://rileyleff.com"]`. If unset, falls back to `cors_origins`
+    /// (ignoring `"*"`).
+    #[serde(default)]
+    pub csrf_origins: Option<Vec<String>>,
+}
+
+impl ServerConfig {
+    /// Origins allowed to make state-changing requests (see `csrf_origins`).
+    pub fn effective_csrf_origins(&self) -> Vec<String> {
+        match &self.csrf_origins {
+            Some(origins) => origins.clone(),
+            None => self
+                .cors_origins
+                .iter()
+                .filter(|o| o.as_str() != "*")
+                .cloned()
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -117,4 +138,39 @@ fn default_max_depth() -> i32 {
 }
 fn default_max_body_length() -> usize {
     10_000
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BASE: &str = r#"
+[database]
+url = "postgres://localhost/test"
+
+[auth]
+jwks_url = "http://riley-auth:8081/.well-known/jwks.json"
+"#;
+
+    fn parse(server: &str) -> Config {
+        toml::from_str(&format!("[server]\n{server}\n{BASE}")).unwrap()
+    }
+
+    #[test]
+    fn csrf_origins_explicit() {
+        let c = parse(
+            r#"cors_origins = ["https://a.example"]
+csrf_origins = ["https://rileyleff.com"]"#,
+        );
+        assert_eq!(c.server.effective_csrf_origins(), vec!["https://rileyleff.com"]);
+    }
+
+    #[test]
+    fn csrf_origins_fall_back_to_cors_without_wildcard() {
+        let c = parse(r#"cors_origins = ["https://rileyleff.com", "*"]"#);
+        assert_eq!(c.server.effective_csrf_origins(), vec!["https://rileyleff.com"]);
+
+        let c = parse("");
+        assert!(c.server.effective_csrf_origins().is_empty());
+    }
 }

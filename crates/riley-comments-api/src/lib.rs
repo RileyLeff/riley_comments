@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod csrf;
 pub mod error;
 pub mod notifications;
 pub mod routes;
@@ -89,27 +90,39 @@ pub async fn serve(config: Config, pool: PgPool) -> anyhow::Result<()> {
         None
     };
 
-    let cors = build_cors(&config.server.cors_origins);
-
     let state = Arc::new(AppState {
         config,
         pool,
-        jwks: Arc::clone(&jwks),
+        jwks,
         r2,
         notif,
     });
 
-    let app = Router::new()
-        .merge(routes::router(Arc::clone(&state)))
-        .layer(axum::Extension(jwks))
-        .layer(cors)
-        .layer(TraceLayer::new_for_http());
+    let app = app(state)?;
 
     tracing::info!(%addr, "starting server");
     let listener = TcpListener::bind(addr).await?;
     axum::serve(listener, app.into_make_service()).await?;
 
     Ok(())
+}
+
+/// Build the full application router (routes + middleware stack).
+pub fn app(state: Arc<AppState>) -> anyhow::Result<Router> {
+    let cors = build_cors(&state.config.server.cors_origins);
+
+    let csrf_origins = state.config.server.effective_csrf_origins();
+    tracing::info!(?csrf_origins, "CSRF allowed origins");
+    let csrf = csrf::CsrfGuard::new(&csrf_origins)?;
+
+    // Layer order (outermost first): trace -> CORS -> CSRF -> routes.
+    // CORS sits outside CSRF so preflights are answered and 403s carry CORS headers.
+    Ok(Router::new()
+        .merge(routes::router(Arc::clone(&state)))
+        .layer(axum::Extension(Arc::clone(&state.jwks)))
+        .layer(axum::middleware::from_fn_with_state(csrf, csrf::csrf_protect))
+        .layer(cors)
+        .layer(TraceLayer::new_for_http()))
 }
 
 fn build_cors(origins: &[String]) -> CorsLayer {
