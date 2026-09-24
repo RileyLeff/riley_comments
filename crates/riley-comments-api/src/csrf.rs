@@ -17,7 +17,7 @@
 //! riding on ambient browser credentials.
 
 use axum::extract::{Request, State};
-use axum::http::{header, HeaderMap, Method, StatusCode};
+use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Json, Response};
 use std::sync::Arc;
@@ -149,9 +149,9 @@ pub async fn csrf_protect(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::Router;
     use axum::body::Body;
     use axum::routing::get;
-    use axum::Router;
     use tower::ServiceExt;
 
     fn guard() -> CsrfGuard {
@@ -230,9 +230,21 @@ mod tests {
             "null",
         ] {
             let h = [("origin", origin), ("cookie", "auth_access=x")];
-            assert_eq!(status("POST", "/thing", &h).await, StatusCode::FORBIDDEN, "{origin}");
-            assert_eq!(status("PATCH", "/thing/1", &h).await, StatusCode::FORBIDDEN, "{origin}");
-            assert_eq!(status("DELETE", "/thing/1", &h).await, StatusCode::FORBIDDEN, "{origin}");
+            assert_eq!(
+                status("POST", "/thing", &h).await,
+                StatusCode::FORBIDDEN,
+                "{origin}"
+            );
+            assert_eq!(
+                status("PATCH", "/thing/1", &h).await,
+                StatusCode::FORBIDDEN,
+                "{origin}"
+            );
+            assert_eq!(
+                status("DELETE", "/thing/1", &h).await,
+                StatusCode::FORBIDDEN,
+                "{origin}"
+            );
         }
     }
 
@@ -249,7 +261,12 @@ mod tests {
     #[tokio::test]
     async fn referer_fallback() {
         assert_eq!(
-            status("POST", "/thing", &[("referer", "https://rileyleff.com/blog/post")]).await,
+            status(
+                "POST",
+                "/thing",
+                &[("referer", "https://rileyleff.com/blog/post")]
+            )
+            .await,
             StatusCode::OK
         );
         assert_eq!(

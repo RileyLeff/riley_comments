@@ -86,24 +86,18 @@ pub async fn counts_for_comments(
     let mut map: std::collections::HashMap<Uuid, Vec<ReactionCount>> =
         std::collections::HashMap::new();
     for row in rows {
-        map.entry(row.comment_id)
-            .or_default()
-            .push(ReactionCount {
-                emoji: row.emoji,
-                count: row.count,
-                user_reacted: row.user_reacted,
-            });
+        map.entry(row.comment_id).or_default().push(ReactionCount {
+            emoji: row.emoji,
+            count: row.count,
+            user_reacted: row.user_reacted,
+        });
     }
 
     Ok(map)
 }
 
 /// Get the usernames of everyone who reacted with a specific emoji on a comment.
-pub async fn reactors(
-    pool: &PgPool,
-    comment_id: Uuid,
-    emoji: &str,
-) -> Result<Vec<ReactionDetail>> {
+pub async fn reactors(pool: &PgPool, comment_id: Uuid, emoji: &str) -> Result<Vec<ReactionDetail>> {
     let rows = sqlx::query_as::<_, ReactionDetail>(
         r#"SELECT username FROM comment_reactions
            WHERE comment_id = $1 AND emoji = $2 AND username != ''

@@ -6,24 +6,20 @@ use crate::{Error, Result};
 
 /// List all custom emojis, ordered by name.
 pub async fn list(pool: &PgPool) -> Result<Vec<CustomEmoji>> {
-    let emojis = sqlx::query_as::<_, CustomEmoji>(
-        "SELECT * FROM custom_emojis ORDER BY name ASC",
-    )
-    .fetch_all(pool)
-    .await?;
+    let emojis = sqlx::query_as::<_, CustomEmoji>("SELECT * FROM custom_emojis ORDER BY name ASC")
+        .fetch_all(pool)
+        .await?;
 
     Ok(emojis)
 }
 
 /// Get a custom emoji by name.
 pub async fn get_by_name(pool: &PgPool, name: &str) -> Result<CustomEmoji> {
-    sqlx::query_as::<_, CustomEmoji>(
-        "SELECT * FROM custom_emojis WHERE name = $1",
-    )
-    .bind(name)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| Error::NotFound(format!("custom emoji '{name}' not found")))
+    sqlx::query_as::<_, CustomEmoji>("SELECT * FROM custom_emojis WHERE name = $1")
+        .bind(name)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| Error::NotFound(format!("custom emoji '{name}' not found")))
 }
 
 /// Create a new custom emoji.

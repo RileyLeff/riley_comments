@@ -93,7 +93,8 @@ pub async fn list(
     let all_ids: Vec<Uuid> = all_comments.iter().map(|c| c.id).collect();
 
     // Fetch reactions and reply counts
-    let reaction_counts = super::reactions::counts_for_comments(pool, &all_ids, current_user_id).await?;
+    let reaction_counts =
+        super::reactions::counts_for_comments(pool, &all_ids, current_user_id).await?;
     let reply_counts = reply_counts(pool, &all_ids).await?;
 
     // Also include soft-deleted comments that have non-deleted replies
@@ -114,16 +115,18 @@ pub async fn list(
         .collect();
 
     for c in deleted_parents {
-        items.push(build_comment_response(c, &reaction_counts, &reply_counts, true));
+        items.push(build_comment_response(
+            c,
+            &reaction_counts,
+            &reply_counts,
+            true,
+        ));
     }
 
     // Sort by created_at for consistent ordering
     items.sort_by(|a, b| a.created_at.cmp(&b.created_at));
 
-    Ok(PaginatedResponse {
-        items,
-        next_cursor,
-    })
+    Ok(PaginatedResponse { items, next_cursor })
 }
 
 /// Get a single comment by ID.
@@ -145,8 +148,7 @@ pub async fn create(
     input: &CreateComment,
     max_depth: i32,
 ) -> Result<Comment> {
-    let (parent_id, depth, reply_to_user_id, reply_to_username) = if let Some(pid) =
-        input.parent_id
+    let (parent_id, depth, reply_to_user_id, reply_to_username) = if let Some(pid) = input.parent_id
     {
         let parent = get(pool, pid).await?;
         if parent.deleted_at.is_some() {
@@ -206,7 +208,9 @@ pub async fn update(
 ) -> Result<Comment> {
     let comment = get(pool, id).await?;
     if comment.user_id != user_id {
-        return Err(Error::Forbidden("you can only edit your own comments".to_string()));
+        return Err(Error::Forbidden(
+            "you can only edit your own comments".to_string(),
+        ));
     }
     if comment.deleted_at.is_some() {
         return Err(Error::NotFound(format!("comment {id} not found")));
@@ -245,10 +249,7 @@ pub async fn soft_delete(pool: &PgPool, id: Uuid, user_id: Uuid, is_admin: bool)
 }
 
 /// Get reply counts for a set of comment IDs.
-async fn reply_counts(
-    pool: &PgPool,
-    ids: &[Uuid],
-) -> Result<std::collections::HashMap<Uuid, i64>> {
+async fn reply_counts(pool: &PgPool, ids: &[Uuid]) -> Result<std::collections::HashMap<Uuid, i64>> {
     #[derive(sqlx::FromRow)]
     struct Row {
         parent_id: Uuid,

@@ -3,8 +3,8 @@ pub mod custom_emoji;
 pub mod reactions;
 pub mod users;
 
-use crate::config::DatabaseConfig;
 use crate::Result;
+use crate::config::DatabaseConfig;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
 pub async fn connect(config: &DatabaseConfig) -> Result<PgPool> {
@@ -12,7 +12,10 @@ pub async fn connect(config: &DatabaseConfig) -> Result<PgPool> {
     let mut opts = PgPoolOptions::new().max_connections(config.max_connections);
 
     if let Some(schema) = &config.schema {
-        if !schema.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        if !schema
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
             return Err(crate::Error::Config(format!(
                 "invalid schema name: {schema}"
             )));

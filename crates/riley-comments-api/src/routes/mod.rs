@@ -3,10 +3,10 @@ pub mod custom_emoji;
 pub mod reactions;
 pub mod users;
 
+use axum::Router;
 use axum::extract::State;
 use axum::response::Json;
 use axum::routing::get;
-use axum::Router;
 use serde::Serialize;
 use std::sync::Arc;
 

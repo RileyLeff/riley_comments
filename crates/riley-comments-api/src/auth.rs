@@ -2,7 +2,7 @@ use axum::extract::Request;
 use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Json, Response};
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -25,7 +25,11 @@ pub struct Claims {
 impl Claims {
     pub fn user_id(&self) -> Result<Uuid, Response> {
         self.sub.parse().map_err(|_| {
-            (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "invalid user id in token"}))).into_response()
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "invalid user id in token"})),
+            )
+                .into_response()
         })
     }
 
@@ -82,7 +86,9 @@ impl JwkKey {
                     Some("RS512") => Algorithm::RS512,
                     _ => Algorithm::RS256,
                 };
-                DecodingKey::from_rsa_components(n, e).ok().map(|k| (k, alg))
+                DecodingKey::from_rsa_components(n, e)
+                    .ok()
+                    .map(|k| (k, alg))
             }
             _ => None,
         }
@@ -134,7 +140,10 @@ impl JwksCache {
     pub async fn verify(&self, token: &str) -> Result<Claims, Response> {
         let keys = self.keys.read().await;
         if keys.is_empty() {
-            return Err(error_response(StatusCode::SERVICE_UNAVAILABLE, "auth keys not loaded"));
+            return Err(error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "auth keys not loaded",
+            ));
         }
 
         for (key, alg) in keys.iter() {
@@ -159,7 +168,10 @@ impl JwksCache {
             }
         }
 
-        Err(error_response(StatusCode::UNAUTHORIZED, "invalid or expired token"))
+        Err(error_response(
+            StatusCode::UNAUTHORIZED,
+            "invalid or expired token",
+        ))
     }
 
     /// Spawn a background task that refreshes JWKS periodically.
@@ -179,10 +191,7 @@ impl JwksCache {
 // ── Auth Middleware ───────────────────────────────────────────────────
 
 /// Middleware that requires a valid JWT. Inserts Claims into request extensions.
-pub async fn require_auth(
-    request: Request,
-    next: Next,
-) -> Result<Response, Response> {
+pub async fn require_auth(request: Request, next: Next) -> Result<Response, Response> {
     let jwks = request
         .extensions()
         .get::<Arc<JwksCache>>()
@@ -201,10 +210,7 @@ pub async fn require_auth(
 
 /// Middleware that optionally attaches Claims if a valid token is present.
 /// Does not reject unauthenticated requests.
-pub async fn optional_auth(
-    request: Request,
-    next: Next,
-) -> Response {
+pub async fn optional_auth(request: Request, next: Next) -> Response {
     let jwks = request.extensions().get::<Arc<JwksCache>>().cloned();
 
     if let Some(jwks) = jwks {

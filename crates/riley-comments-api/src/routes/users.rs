@@ -1,12 +1,12 @@
+use axum::Router;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
-use axum::Router;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::error::ApiResult;
 use crate::AppState;
+use crate::error::ApiResult;
 use riley_comments_core::db;
 
 pub fn router(_state: Arc<AppState>) -> Router<Arc<AppState>> {

@@ -106,9 +106,8 @@ impl ConfigValue {
         match self {
             Self::Direct(v) => {
                 if let Some(name) = v.strip_prefix("env:") {
-                    std::env::var(name).map_err(|_| {
-                        crate::Error::Config(format!("env var not set: {name}"))
-                    })
+                    std::env::var(name)
+                        .map_err(|_| crate::Error::Config(format!("env var not set: {name}")))
                 } else {
                     Ok(v.clone())
                 }
@@ -162,13 +161,19 @@ jwks_url = "http://riley-auth:8081/.well-known/jwks.json"
             r#"cors_origins = ["https://a.example"]
 csrf_origins = ["https://rileyleff.com"]"#,
         );
-        assert_eq!(c.server.effective_csrf_origins(), vec!["https://rileyleff.com"]);
+        assert_eq!(
+            c.server.effective_csrf_origins(),
+            vec!["https://rileyleff.com"]
+        );
     }
 
     #[test]
     fn csrf_origins_fall_back_to_cors_without_wildcard() {
         let c = parse(r#"cors_origins = ["https://rileyleff.com", "*"]"#);
-        assert_eq!(c.server.effective_csrf_origins(), vec!["https://rileyleff.com"]);
+        assert_eq!(
+            c.server.effective_csrf_origins(),
+            vec!["https://rileyleff.com"]
+        );
 
         let c = parse("");
         assert!(c.server.effective_csrf_origins().is_empty());

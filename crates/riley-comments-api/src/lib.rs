@@ -5,8 +5,8 @@ pub mod notifications;
 pub mod routes;
 
 use auth::JwksCache;
-use axum::http::Method;
 use axum::Router;
+use axum::http::Method;
 use riley_comments_core::config::Config;
 use sqlx::PgPool;
 use std::net::SocketAddr;
@@ -120,7 +120,10 @@ pub fn app(state: Arc<AppState>) -> anyhow::Result<Router> {
     Ok(Router::new()
         .merge(routes::router(Arc::clone(&state)))
         .layer(axum::Extension(Arc::clone(&state.jwks)))
-        .layer(axum::middleware::from_fn_with_state(csrf, csrf::csrf_protect))
+        .layer(axum::middleware::from_fn_with_state(
+            csrf,
+            csrf::csrf_protect,
+        ))
         .layer(cors)
         .layer(TraceLayer::new_for_http()))
 }
@@ -131,10 +134,7 @@ fn build_cors(origins: &[String]) -> CorsLayer {
     } else if origins.len() == 1 && origins[0] == "*" {
         CorsLayer::permissive()
     } else {
-        let origins: Vec<_> = origins
-            .iter()
-            .filter_map(|o| o.parse().ok())
-            .collect();
+        let origins: Vec<_> = origins.iter().filter_map(|o| o.parse().ok()).collect();
         CorsLayer::new()
             .allow_origin(AllowOrigin::list(origins))
             .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])

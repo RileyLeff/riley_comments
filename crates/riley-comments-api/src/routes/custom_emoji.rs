@@ -1,19 +1,18 @@
+use axum::Router;
 use axum::extract::{Multipart, Path, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Json};
 use axum::routing::{delete, get, post};
-use axum::Router;
 use std::sync::Arc;
 
+use crate::AppState;
 use crate::auth::{self, Claims};
 use crate::error::{ApiError, ApiResult};
-use crate::AppState;
 use riley_comments_core::db;
 
 pub fn router(_state: Arc<AppState>) -> Router<Arc<AppState>> {
-    let public = Router::new()
-        .route("/emoji", get(list_emoji));
+    let public = Router::new().route("/emoji", get(list_emoji));
 
     let authed = Router::new()
         .route("/emoji", post(upload_emoji))
@@ -23,9 +22,7 @@ pub fn router(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     public.merge(authed)
 }
 
-async fn list_emoji(
-    State(state): State<Arc<AppState>>,
-) -> ApiResult<impl IntoResponse> {
+async fn list_emoji(State(state): State<Arc<AppState>>) -> ApiResult<impl IntoResponse> {
     let emojis = db::custom_emoji::list(&state.pool).await?;
     Ok(Json(emojis))
 }
@@ -67,11 +64,17 @@ async fn upload_emoji(
             }
             "file" => {
                 content_type = field.content_type().map(|s| s.to_string());
-                file_data = Some(field.bytes().await.map_err(|e| {
-                    ApiError(riley_comments_core::Error::Validation(format!(
-                        "failed to read file: {e}"
-                    )))
-                })?.to_vec());
+                file_data = Some(
+                    field
+                        .bytes()
+                        .await
+                        .map_err(|e| {
+                            ApiError(riley_comments_core::Error::Validation(format!(
+                                "failed to read file: {e}"
+                            )))
+                        })?
+                        .to_vec(),
+                );
             }
             _ => {}
         }
@@ -87,7 +90,10 @@ async fn upload_emoji(
         })?;
 
     // Validate name: alphanumeric, hyphens, underscores only
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return Err(ApiError(riley_comments_core::Error::Validation(
             "emoji name must be alphanumeric with hyphens/underscores only".to_string(),
         )));
@@ -145,7 +151,9 @@ async fn upload_emoji(
     let image_url = format!("{}/{}", r2.public_url.trim_end_matches('/'), key);
 
     let user_id = claims.user_id().map_err(|_| {
-        ApiError(riley_comments_core::Error::Internal("bad user id".to_string()))
+        ApiError(riley_comments_core::Error::Internal(
+            "bad user id".to_string(),
+        ))
     })?;
 
     let emoji = db::custom_emoji::create(&state.pool, &name, &image_url, user_id).await?;

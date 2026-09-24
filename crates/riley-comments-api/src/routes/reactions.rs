@@ -1,17 +1,17 @@
+use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Json};
 use axum::routing::{delete, get, post};
-use axum::Router;
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::AppState;
 use crate::auth::{self, Claims};
 use crate::error::{ApiError, ApiResult};
 use crate::notifications::truncate;
-use crate::AppState;
 use riley_comments_core::db;
 use riley_comments_core::models::CreateReaction;
 
@@ -25,10 +25,7 @@ pub fn router(_state: Arc<AppState>) -> Router<Arc<AppState>> {
 
     let authed = Router::new()
         .route("/comments/{id}/reactions", post(add_reaction))
-        .route(
-            "/comments/{id}/reactions/{emoji}",
-            delete(remove_reaction),
-        )
+        .route("/comments/{id}/reactions/{emoji}", delete(remove_reaction))
         .layer(middleware::from_fn(auth::require_auth));
 
     public.merge(authed)
@@ -74,7 +71,9 @@ async fn add_reaction(
     }
 
     let user_id = claims.user_id().map_err(|_| {
-        ApiError(riley_comments_core::Error::Internal("bad user id".to_string()))
+        ApiError(riley_comments_core::Error::Internal(
+            "bad user id".to_string(),
+        ))
     })?;
 
     db::reactions::add(&state.pool, id, user_id, &claims.username, &input.emoji).await?;
@@ -82,9 +81,15 @@ async fn add_reaction(
     // Notify comment author about the reaction (unless reacting to your own comment)
     if let Ok(comment) = db::comments::get(&state.pool, id).await {
         if comment.user_id != user_id {
-            let title = format!("{} reacted {} to your comment", claims.username, input.emoji);
+            let title = format!(
+                "{} reacted {} to your comment",
+                claims.username, input.emoji
+            );
             let body = truncate(&comment.body, 200);
-            let url = format!("/{}/{}#comment-{}", comment.entity_type, comment.entity_id, comment.id);
+            let url = format!(
+                "/{}/{}#comment-{}",
+                comment.entity_type, comment.entity_id, comment.id
+            );
             let metadata = serde_json::json!({
                 "comment_id": comment.id,
                 "emoji": input.emoji,
@@ -113,7 +118,9 @@ async fn remove_reaction(
     Path((id, emoji)): Path<(Uuid, String)>,
 ) -> ApiResult<impl IntoResponse> {
     let user_id = claims.user_id().map_err(|_| {
-        ApiError(riley_comments_core::Error::Internal("bad user id".to_string()))
+        ApiError(riley_comments_core::Error::Internal(
+            "bad user id".to_string(),
+        ))
     })?;
 
     db::reactions::remove(&state.pool, id, user_id, &emoji).await?;

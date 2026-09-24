@@ -1,26 +1,23 @@
+use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{IntoResponse, Json};
 use axum::routing::{get, patch, post};
-use axum::Router;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::AppState;
 use crate::auth::{self, Claims};
 use crate::error::{ApiError, ApiResult};
 use crate::notifications::truncate;
-use crate::AppState;
 use riley_comments_core::db;
 use riley_comments_core::models::*;
 
 pub fn router(_state: Arc<AppState>) -> Router<Arc<AppState>> {
     // Read routes — no auth required
     let public = Router::new()
-        .route(
-            "/comments/{entity_type}/{entity_id}",
-            get(list_comments),
-        )
+        .route("/comments/{entity_type}/{entity_id}", get(list_comments))
         .route("/comments/{id}", get(get_comment))
         .layer(middleware::from_fn(auth::optional_auth));
 
@@ -40,9 +37,15 @@ async fn list_comments(
     Path((entity_type, entity_id)): Path<(String, String)>,
     Query(params): Query<PaginationParams>,
 ) -> ApiResult<impl IntoResponse> {
-    let current_user_id = claims
-        .and_then(|c| c.0.user_id().ok());
-    let page = db::comments::list(&state.pool, &entity_type, &entity_id, &params, current_user_id).await?;
+    let current_user_id = claims.and_then(|c| c.0.user_id().ok());
+    let page = db::comments::list(
+        &state.pool,
+        &entity_type,
+        &entity_id,
+        &params,
+        current_user_id,
+    )
+    .await?;
     Ok(Json(page))
 }
 
@@ -73,7 +76,9 @@ async fn create_comment(
     }
 
     let user_id = claims.user_id().map_err(|_| {
-        ApiError(riley_comments_core::Error::Internal("bad user id".to_string()))
+        ApiError(riley_comments_core::Error::Internal(
+            "bad user id".to_string(),
+        ))
     })?;
 
     // If replying, look up the parent so we can notify its author
@@ -97,7 +102,10 @@ async fn create_comment(
         if parent.user_id != user_id {
             let title = format!("{} replied to your comment", claims.username);
             let body = truncate(&input.body, 200);
-            let url = format!("/{}/{}#comment-{}", input.entity_type, input.entity_id, comment.id);
+            let url = format!(
+                "/{}/{}#comment-{}",
+                input.entity_type, input.entity_id, comment.id
+            );
             let metadata = serde_json::json!({
                 "comment_id": comment.id,
                 "parent_id": parent.id,
@@ -139,7 +147,9 @@ async fn update_comment(
     }
 
     let user_id = claims.user_id().map_err(|_| {
-        ApiError(riley_comments_core::Error::Internal("bad user id".to_string()))
+        ApiError(riley_comments_core::Error::Internal(
+            "bad user id".to_string(),
+        ))
     })?;
 
     let comment = db::comments::update(&state.pool, id, user_id, &input).await?;
@@ -152,7 +162,9 @@ async fn delete_comment(
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let user_id = claims.user_id().map_err(|_| {
-        ApiError(riley_comments_core::Error::Internal("bad user id".to_string()))
+        ApiError(riley_comments_core::Error::Internal(
+            "bad user id".to_string(),
+        ))
     })?;
 
     db::comments::soft_delete(&state.pool, id, user_id, claims.is_admin()).await?;
