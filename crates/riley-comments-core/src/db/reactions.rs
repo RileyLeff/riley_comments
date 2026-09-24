@@ -5,13 +5,14 @@ use crate::models::*;
 use crate::{Error, Result};
 
 /// Add a reaction to a comment. Idempotent — re-adding the same emoji is a no-op.
+/// Returns whether a new reaction was recorded (false for a repeat).
 pub async fn add(
     pool: &PgPool,
     comment_id: Uuid,
     user_id: Uuid,
     username: &str,
     emoji: &str,
-) -> Result<()> {
+) -> Result<bool> {
     // Verify the comment exists and isn't deleted
     let exists: Option<(Uuid,)> =
         sqlx::query_as("SELECT id FROM comments WHERE id = $1 AND deleted_at IS NULL")
@@ -23,7 +24,7 @@ pub async fn add(
         return Err(Error::NotFound(format!("comment {comment_id} not found")));
     }
 
-    sqlx::query(
+    let result = sqlx::query(
         r#"INSERT INTO comment_reactions (comment_id, user_id, emoji, username)
            VALUES ($1, $2, $3, $4)
            ON CONFLICT (comment_id, user_id, emoji) DO NOTHING"#,
@@ -35,7 +36,7 @@ pub async fn add(
     .execute(pool)
     .await?;
 
-    Ok(())
+    Ok(result.rows_affected() == 1)
 }
 
 /// Remove a reaction. No-op if it doesn't exist.

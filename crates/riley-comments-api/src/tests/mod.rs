@@ -7,4 +7,5 @@
 
 mod admin;
 mod comments;
+mod reactions;
 mod support;

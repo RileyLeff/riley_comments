@@ -76,10 +76,13 @@ async fn add_reaction(
         ))
     })?;
 
-    db::reactions::add(&state.pool, id, user_id, &claims.username, &input.emoji).await?;
+    let inserted =
+        db::reactions::add(&state.pool, id, user_id, &claims.username, &input.emoji).await?;
 
-    // Notify comment author about the reaction (unless reacting to your own comment)
-    if let Ok(comment) = db::comments::get(&state.pool, id).await
+    // Notify comment author about a new reaction (not a repeat of one that
+    // already exists, and not a reaction to your own comment)
+    if inserted
+        && let Ok(comment) = db::comments::get(&state.pool, id).await
         && comment.user_id != user_id
     {
         let title = format!(

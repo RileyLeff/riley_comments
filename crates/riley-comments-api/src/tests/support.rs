@@ -3,7 +3,7 @@ use axum::body::Body;
 use axum::extract::Request;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
-use axum::routing::get;
+use axum::routing::{get, post};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header};
 use riley_comments_core::config::{
     AuthConfig, CommentsConfig, Config, ConfigValue, DatabaseConfig, ServerConfig,
@@ -103,6 +103,53 @@ impl MockAuth {
 
     pub fn hits(&self) -> usize {
         *self.hits.lock().unwrap()
+    }
+}
+
+/// A stand-in for riley-notifications that records every payload.
+#[derive(Clone, Default)]
+pub struct MockNotifications {
+    received: Arc<Mutex<Vec<serde_json::Value>>>,
+    base: String,
+}
+
+impl MockNotifications {
+    pub async fn start() -> Self {
+        let mut mock = Self::default();
+        let received = Arc::clone(&mock.received);
+        let router = Router::new().route(
+            "/notifications",
+            post(move |Json(v): Json<serde_json::Value>| {
+                let received = Arc::clone(&received);
+                async move {
+                    received.lock().unwrap().push(v);
+                    StatusCode::CREATED
+                }
+            }),
+        );
+        mock.base = serve(router).await;
+        mock
+    }
+
+    pub fn client(&self) -> NotificationsClient {
+        NotificationsClient::new(self.base.clone(), "/notifications", "test".to_string())
+    }
+
+    pub fn received(&self) -> Vec<serde_json::Value> {
+        self.received.lock().unwrap().clone()
+    }
+
+    /// Wait until at least `n` notifications arrived, then a little longer so
+    /// stray extra sends would show up too.
+    pub async fn settle(&self, n: usize) -> Vec<serde_json::Value> {
+        for _ in 0..200 {
+            if self.received.lock().unwrap().len() >= n {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        self.received()
     }
 }
 
