@@ -8,7 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::auth::{self, Claims};
+use crate::auth::{self, AccessToken, Claims};
 use crate::error::{ApiError, ApiResult};
 use crate::notifications::truncate;
 use riley_comments_core::db;
@@ -159,6 +159,7 @@ async fn update_comment(
 async fn delete_comment(
     State(state): State<Arc<AppState>>,
     axum::Extension(claims): axum::Extension<Claims>,
+    axum::Extension(token): axum::Extension<AccessToken>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
     let user_id = claims.user_id().map_err(|_| {
@@ -167,6 +168,16 @@ async fn delete_comment(
         ))
     })?;
 
-    db::comments::soft_delete(&state.pool, id, user_id, claims.is_admin()).await?;
+    // Deleting someone else's comment is a moderation action. The token's role
+    // claim can be weeks old, so confirm it live with riley-auth (fails closed).
+    let comment = db::comments::get(&state.pool, id).await?;
+    let is_admin = if comment.user_id != user_id && claims.is_admin() {
+        state.roles.require_admin(&claims, &token).await?;
+        true
+    } else {
+        false
+    };
+
+    db::comments::soft_delete(&state.pool, id, user_id, is_admin).await?;
     Ok(StatusCode::NO_CONTENT)
 }

@@ -7,7 +7,7 @@ use axum::routing::{delete, get, post};
 use std::sync::Arc;
 
 use crate::AppState;
-use crate::auth::{self, Claims};
+use crate::auth::{self, AccessToken, Claims};
 use crate::error::{ApiError, ApiResult};
 use riley_comments_core::db;
 
@@ -30,13 +30,10 @@ async fn list_emoji(State(state): State<Arc<AppState>>) -> ApiResult<impl IntoRe
 async fn upload_emoji(
     State(state): State<Arc<AppState>>,
     axum::Extension(claims): axum::Extension<Claims>,
+    axum::Extension(token): axum::Extension<AccessToken>,
     mut multipart: Multipart,
 ) -> ApiResult<impl IntoResponse> {
-    if !claims.is_admin() {
-        return Err(ApiError(riley_comments_core::Error::Forbidden(
-            "only admins can upload custom emoji".to_string(),
-        )));
-    }
+    state.roles.require_admin(&claims, &token).await?;
 
     let r2 = state.r2.as_ref().ok_or_else(|| {
         ApiError(riley_comments_core::Error::Internal(
@@ -164,13 +161,10 @@ async fn upload_emoji(
 async fn delete_emoji(
     State(state): State<Arc<AppState>>,
     axum::Extension(claims): axum::Extension<Claims>,
+    axum::Extension(token): axum::Extension<AccessToken>,
     Path(name): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    if !claims.is_admin() {
-        return Err(ApiError(riley_comments_core::Error::Forbidden(
-            "only admins can delete custom emoji".to_string(),
-        )));
-    }
+    state.roles.require_admin(&claims, &token).await?;
 
     let r2 = state.r2.as_ref().ok_or_else(|| {
         ApiError(riley_comments_core::Error::Internal(

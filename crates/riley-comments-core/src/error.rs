@@ -20,6 +20,10 @@ pub enum Error {
     #[error("validation error: {0}")]
     Validation(String),
 
+    /// A dependency needed to authorize the request could not be reached.
+    #[error("service unavailable: {0}")]
+    Unavailable(String),
+
     #[error("internal error: {0}")]
     Internal(String),
 }

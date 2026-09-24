@@ -16,6 +16,7 @@ impl IntoResponse for ApiError {
             CoreError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             CoreError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
             CoreError::Validation(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            CoreError::Unavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg.clone()),
             CoreError::Config(msg) => {
                 tracing::error!("config error: {msg}");
                 (

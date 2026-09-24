@@ -4,6 +4,9 @@ pub mod error;
 pub mod notifications;
 pub mod routes;
 
+#[cfg(test)]
+mod tests;
+
 use auth::JwksCache;
 use axum::Router;
 use axum::http::Method;
@@ -25,6 +28,8 @@ pub struct AppState {
     pub config: Config,
     pub pool: PgPool,
     pub jwks: Arc<JwksCache>,
+    /// Live role check against riley-auth for admin-only actions.
+    pub roles: auth::RoleChecker,
     pub r2: Option<R2Client>,
     pub notif: Option<notifications::NotificationsClient>,
 }
@@ -42,6 +47,10 @@ pub async fn serve(config: Config, pool: PgPool) -> anyhow::Result<()> {
     // Initial fetch + background refresh
     jwks.refresh().await?;
     jwks.spawn_refresh_task();
+
+    // Admin actions re-check the role against riley-auth (same host as JWKS).
+    let roles = auth::RoleChecker::from_jwks_url(&config.auth.jwks_url)?;
+    tracing::info!(url = %roles.me_url(), "admin role check endpoint");
 
     // Set up R2 client if configured
     let r2 = if let Some(r2_config) = &config.r2 {
@@ -94,6 +103,7 @@ pub async fn serve(config: Config, pool: PgPool) -> anyhow::Result<()> {
         config,
         pool,
         jwks,
+        roles,
         r2,
         notif,
     });
