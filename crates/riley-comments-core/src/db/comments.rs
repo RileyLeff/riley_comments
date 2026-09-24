@@ -138,6 +138,16 @@ pub async fn get(pool: &PgPool, id: Uuid) -> Result<Comment> {
         .ok_or_else(|| Error::NotFound(format!("comment {id} not found")))
 }
 
+/// Get a single comment for public readers. Soft-deleted comments are
+/// reported as not found so their body and author stay hidden.
+pub async fn get_visible(pool: &PgPool, id: Uuid) -> Result<Comment> {
+    sqlx::query_as::<_, Comment>("SELECT * FROM comments WHERE id = $1 AND deleted_at IS NULL")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| Error::NotFound(format!("comment {id} not found")))
+}
+
 /// Create a new comment, enforcing max depth.
 /// When replying to a reply (depth >= max_depth), the comment is flattened to the
 /// parent level and `reply_to_user_id`/`reply_to_username` record the intended target.

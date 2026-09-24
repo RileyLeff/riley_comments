@@ -53,7 +53,7 @@ async fn get_comment(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<impl IntoResponse> {
-    let comment = db::comments::get(&state.pool, id).await?;
+    let comment = db::comments::get_visible(&state.pool, id).await?;
     Ok(Json(comment))
 }
 

@@ -6,4 +6,5 @@
 //! variable is unset.
 
 mod admin;
+mod comments;
 mod support;
